@@ -35,3 +35,5 @@ print("Number of vowels:", total_vowels)
 print("Number of consonants:", total_consonants)
 
 
+
+
