@@ -38,3 +38,8 @@ def calculate_median():
 
 if __name__ == "__main__":
     calculate_median()
+
+
+##Create a message congratulating the user on successfully calculating the median, and encourage them to try again with different numbers to see how the median changes.
+    print("\nCongratulations on successfully calculating the median! Feel free to try again with different numbers to see how the median changes. Happy calculating!")
+    
