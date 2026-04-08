@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 import json
@@ -122,100 +122,110 @@ class MoodTrackerApp:
         self.entries = []
         self.mood_var = tk.StringVar()
         self.note_var = tk.StringVar()
+        self.style = ttk.Style(self.root)
 
         self.build_ui()
         self.refresh_entries()
 
+    def configure_styles(self):
+        try:
+            self.style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        self.style.configure("Page.TFrame", background="#0f172a")
+        self.style.configure("Input.TFrame", background="#fef08a", borderwidth=2, relief="groove")
+        self.style.configure("Panel.TFrame", background="#1e293b", borderwidth=2, relief="groove")
+        self.style.configure("List.TFrame", background="#1e293b")
+
+        self.style.configure("InputTitle.TLabel", background="#fef08a", foreground="#111827", font=("Arial", 14, "bold"))
+        self.style.configure("Input.TLabel", background="#fef08a", foreground="#111827", font=("Arial", 12, "bold"))
+        self.style.configure("PanelTitle.TLabel", background="#1e293b", foreground="#f8fafc", font=("Arial", 12, "bold"))
+
+        self.style.configure("Mood.TEntry", fieldbackground="#ffffff", foreground="#111827", insertcolor="#111827")
+        self.style.map("Mood.TEntry", fieldbackground=[("disabled", "#e5e7eb"), ("readonly", "#ffffff")])
+
+        self.style.configure(
+            "Action.TButton",
+            background="#22c55e",
+            foreground="#052e16",
+            font=("Arial", 11, "bold"),
+            borderwidth=1,
+            focusthickness=2,
+            focuscolor="#bbf7d0"
+        )
+        self.style.map(
+            "Action.TButton",
+            background=[("active", "#16a34a"), ("pressed", "#15803d")],
+            foreground=[("active", "#052e16"), ("pressed", "#052e16")]
+        )
+
     def build_ui(self):
-        page_bg = "#0f172a"
-        panel_bg = "#1e293b"
-        input_bg = "#fef08a"
-        field_bg = "#ffffff"
-        button_bg = "#22c55e"
-        button_fg = "#052e16"
-        text_fg = "#f8fafc"
+        self.configure_styles()
+
         dark_text = "#111827"
 
-        input_frame = tk.Frame(
+        input_frame = ttk.Frame(
             self.root,
-            bg=input_bg,
-            bd=2,
-            relief="groove",
-            padx=14,
-            pady=12
+            style="Input.TFrame",
+            padding=(14, 12)
         )
         input_frame.pack(fill="x", padx=15, pady=(15, 8))
 
-        tk.Label(
+        ttk.Label(
             input_frame,
             text="Type your mood here",
-            font=("Arial", 14, "bold"),
-            bg=input_bg,
-            fg=dark_text
+            style="InputTitle.TLabel"
         ).grid(row=0, column=0, columnspan=4, padx=(0, 8), pady=(0, 10), sticky="w")
 
-        tk.Label(input_frame, text="Mood number (1-5):", font=("Arial", 12, "bold"), bg=input_bg, fg=dark_text).grid(
+        ttk.Label(input_frame, text="Mood number (1-5):", style="Input.TLabel").grid(
             row=1, column=0, padx=(0, 8), pady=5, sticky="w"
         )
 
-        self.mood_entry = tk.Entry(
+        self.mood_entry = ttk.Entry(
             input_frame,
             width=10,
             font=("Arial", 12),
             textvariable=self.mood_var,
-            bg=field_bg,
-            fg=dark_text,
-            insertbackground=dark_text,
-            highlightbackground="#dc2626",
-            highlightcolor="#dc2626",
-            highlightthickness=2,
-            relief="sunken",
-            bd=2
+            style="Mood.TEntry"
         )
         self.mood_entry.grid(row=1, column=1, padx=(0, 18), pady=5, sticky="w")
 
-        tk.Label(input_frame, text="Notes:", font=("Arial", 12, "bold"), bg=input_bg, fg=dark_text).grid(
+        ttk.Label(input_frame, text="Notes:", style="Input.TLabel").grid(
             row=1, column=2, padx=(0, 8), pady=5, sticky="w"
         )
 
-        self.note_entry = tk.Entry(
+        self.note_entry = ttk.Entry(
             input_frame,
             width=50,
             font=("Arial", 12),
             textvariable=self.note_var,
-            bg=field_bg,
-            fg=dark_text,
-            insertbackground=dark_text,
-            highlightbackground="#dc2626",
-            highlightcolor="#dc2626",
-            highlightthickness=2,
-            relief="sunken",
-            bd=2
+            style="Mood.TEntry"
         )
         self.note_entry.grid(row=1, column=3, padx=(0, 0), pady=5, sticky="we")
 
         input_frame.grid_columnconfigure(3, weight=1)
 
-        button_frame = tk.Frame(self.root, bg=page_bg)
+        button_frame = ttk.Frame(self.root, style="Page.TFrame")
         button_frame.pack(pady=(2, 10))
 
-        tk.Button(button_frame, text="Add Entry", width=15, command=self.gui_add_entry, bg=button_bg, fg=button_fg, activebackground="#16a34a", activeforeground=button_fg).grid(row=0, column=0, padx=5)
-        tk.Button(button_frame, text="Update Selected", width=15, command=self.gui_update_entry, bg=button_bg, fg=button_fg, activebackground="#16a34a", activeforeground=button_fg).grid(row=0, column=1, padx=5)
-        tk.Button(button_frame, text="Delete Selected", width=15, command=self.gui_delete_entry, bg=button_bg, fg=button_fg, activebackground="#16a34a", activeforeground=button_fg).grid(row=0, column=2, padx=5)
-        tk.Button(button_frame, text="Show Statistics", width=15, command=self.gui_show_stats, bg=button_bg, fg=button_fg, activebackground="#16a34a", activeforeground=button_fg).grid(row=0, column=3, padx=5)
-        tk.Button(button_frame, text="Refresh Entries", width=15, command=self.refresh_entries, bg=button_bg, fg=button_fg, activebackground="#16a34a", activeforeground=button_fg).grid(row=0, column=4, padx=5)
+        ttk.Button(button_frame, text="Add Entry", width=15, command=self.gui_add_entry, style="Action.TButton").grid(row=0, column=0, padx=5)
+        ttk.Button(button_frame, text="Update Selected", width=15, command=self.gui_update_entry, style="Action.TButton").grid(row=0, column=1, padx=5)
+        ttk.Button(button_frame, text="Delete Selected", width=15, command=self.gui_delete_entry, style="Action.TButton").grid(row=0, column=2, padx=5)
+        ttk.Button(button_frame, text="Show Statistics", width=15, command=self.gui_show_stats, style="Action.TButton").grid(row=0, column=3, padx=5)
+        ttk.Button(button_frame, text="Refresh Entries", width=15, command=self.refresh_entries, style="Action.TButton").grid(row=0, column=4, padx=5)
 
         self.mood_entry.focus_set()
 
-        main_frame = tk.Frame(self.root, bg=page_bg)
+        main_frame = ttk.Frame(self.root, style="Page.TFrame")
         main_frame.pack(fill="both", expand=True, padx=15, pady=10)
 
-        left_frame = tk.Frame(main_frame, bg=panel_bg, bd=2, relief="groove")
+        left_frame = ttk.Frame(main_frame, style="Panel.TFrame")
         left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        tk.Label(left_frame, text="Saved Entries", font=("Arial", 12, "bold"), bg=panel_bg, fg=text_fg).pack(anchor="w", padx=10, pady=10)
+        ttk.Label(left_frame, text="Saved Entries", style="PanelTitle.TLabel").pack(anchor="w", padx=10, pady=10)
 
-        list_frame = tk.Frame(left_frame, bg=panel_bg)
+        list_frame = ttk.Frame(left_frame, style="List.TFrame")
         list_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         self.listbox = tk.Listbox(
@@ -231,16 +241,16 @@ class MoodTrackerApp:
         )
         self.listbox.pack(side="left", fill="both", expand=True)
 
-        scrollbar = tk.Scrollbar(list_frame, orient="vertical", command=self.listbox.yview)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.listbox.yview)
         scrollbar.pack(side="right", fill="y")
         self.listbox.config(yscrollcommand=scrollbar.set)
 
         self.listbox.bind("<<ListboxSelect>>", self.on_select_entry)
 
-        right_frame = tk.Frame(main_frame, bg=panel_bg, bd=2, relief="groove")
+        right_frame = ttk.Frame(main_frame, style="Panel.TFrame")
         right_frame.pack(side="left", fill="both", expand=True)
 
-        tk.Label(right_frame, text="Entry Details", font=("Arial", 12, "bold"), bg=panel_bg, fg=text_fg).pack(anchor="w", padx=10, pady=10)
+        ttk.Label(right_frame, text="Entry Details", style="PanelTitle.TLabel").pack(anchor="w", padx=10, pady=10)
 
         self.details_text = tk.Text(
             right_frame,

@@ -6,11 +6,6 @@
     },
     {
         "mood": 2,
-        "note": "Low energy today",
-        "timestamp": "2026-04-07T17:32:24.067209"
-    },
-    {
-        "mood": 2,
         "note": "Feeling oaky",
         "timestamp": "2026-04-07T17:37:39.097250"
     },
@@ -83,5 +78,10 @@
         "mood": 1,
         "note": "",
         "timestamp": "2026-04-08T10:53:32.909823"
+    },
+    {
+        "mood": 5,
+        "note": "",
+        "timestamp": "2026-04-08T11:08:12.569413"
     }
 ]

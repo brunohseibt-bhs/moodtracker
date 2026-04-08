@@ -29,5 +29,7 @@ I asked Copilot to implement those suggestions and to only comment out the exist
 
 Quick update after 30 minutes trying to get the app to work again. Its not letting me add any input. And I didnt push it to github after it started working. I just kept playing with it. Now I cant make it work and cant go back to the other version that was working. Lesson learned there. 
 
-Now I think I fixed it and also asked it 
+Now I think I fixed it and also asked it to implement CLEAR. I'll be using the same repository link for both 6A and 6B
+
+Quick update after 30 mins of trying. It works. Color scheme was changed and the biggest issue was how I was running the GUI. All good now. 
 
