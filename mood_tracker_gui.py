@@ -5,16 +5,13 @@ import tkinter as tk
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, simpledialog
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "mood_entries.json")
 EXPORT_FILE = os.path.join(BASE_DIR, "mood_entries_export.csv")
 
 
-# =========================
-# Data Model
-# =========================
 @dataclass
 class MoodEntry:
     mood: int
@@ -26,9 +23,6 @@ class MoodEntry:
             raise ValueError("Mood must be an integer between 1 and 5.")
 
 
-# =========================
-# Helpers
-# =========================
 def parse_timestamp(timestamp):
     return datetime.fromisoformat(timestamp)
 
@@ -40,9 +34,6 @@ def format_timestamp(timestamp):
         return timestamp
 
 
-# =========================
-# File Operations
-# =========================
 def load_entries(filename=DATA_FILE):
     if not os.path.exists(filename):
         return []
@@ -62,7 +53,6 @@ def load_entries(filename=DATA_FILE):
             entries.append(MoodEntry(**entry))
         except (ValueError, TypeError):
             pass
-
     return entries
 
 
@@ -71,9 +61,6 @@ def save_entries(entries, filename=DATA_FILE):
         json.dump([asdict(entry) for entry in entries], file, indent=4)
 
 
-# =========================
-# CRUD Functions
-# =========================
 def add_entry(mood, note="", filename=DATA_FILE):
     entries = load_entries(filename)
     new_entry = MoodEntry(mood=mood, note=note)
@@ -145,15 +132,10 @@ def search_entries(keyword, filename=DATA_FILE):
 
 def filter_by_mood(min_mood=None, max_mood=None, filename=DATA_FILE):
     entries = load_entries(filename)
-
-    if min_mood is not None:
-        if not isinstance(min_mood, int) or not 1 <= min_mood <= 5:
-            raise ValueError("Minimum mood must be an integer between 1 and 5.")
-
-    if max_mood is not None:
-        if not isinstance(max_mood, int) or not 1 <= max_mood <= 5:
-            raise ValueError("Maximum mood must be an integer between 1 and 5.")
-
+    if min_mood is not None and (not isinstance(min_mood, int) or not 1 <= min_mood <= 5):
+        raise ValueError("Minimum mood must be an integer between 1 and 5.")
+    if max_mood is not None and (not isinstance(max_mood, int) or not 1 <= max_mood <= 5):
+        raise ValueError("Maximum mood must be an integer between 1 and 5.")
     if min_mood is not None and max_mood is not None and min_mood > max_mood:
         raise ValueError("Minimum mood cannot be greater than maximum mood.")
 
@@ -166,7 +148,6 @@ def filter_by_mood(min_mood=None, max_mood=None, filename=DATA_FILE):
 
 def filter_by_date(start_date=None, end_date=None, filename=DATA_FILE):
     entries = load_entries(filename)
-
     start = datetime.fromisoformat(start_date).date() if start_date else None
     end = datetime.fromisoformat(end_date).date() if end_date else None
 
@@ -184,7 +165,6 @@ def filter_by_date(start_date=None, end_date=None, filename=DATA_FILE):
             continue
         if end and entry_date > end:
             continue
-
         filtered_entries.append(entry)
 
     return filtered_entries
@@ -192,13 +172,11 @@ def filter_by_date(start_date=None, end_date=None, filename=DATA_FILE):
 
 def export_entries_csv(filename=DATA_FILE, export_filename=EXPORT_FILE):
     entries = load_entries(filename)
-
     with open(export_filename, "w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(["mood", "note", "timestamp"])
         for entry in entries:
             writer.writerow([entry.mood, entry.note, entry.timestamp])
-
     return export_filename
 
 
@@ -207,13 +185,12 @@ def get_mood_trend(filename=DATA_FILE):
     if len(entries) < 2:
         return None
 
-    first_half_count = len(entries) // 2
-    if first_half_count == 0:
+    split_point = len(entries) // 2
+    if split_point == 0:
         return None
 
-    first_half = entries[:first_half_count]
-    second_half = entries[first_half_count:]
-
+    first_half = entries[:split_point]
+    second_half = entries[split_point:]
     first_average = sum(entry.mood for entry in first_half) / len(first_half)
     second_average = sum(entry.mood for entry in second_half) / len(second_half)
     difference = second_average - first_average
@@ -238,26 +215,19 @@ def get_most_common_mood(filename=DATA_FILE):
     if not entries:
         return None
 
-    counts = Counter(entry.mood for entry in entries)
-    mood, frequency = counts.most_common(1)[0]
-    return {
-        "mood": mood,
-        "frequency": frequency,
-    }
+    mood, frequency = Counter(entry.mood for entry in entries).most_common(1)[0]
+    return {"mood": mood, "frequency": frequency}
 
 
 def get_entries_for_today(filename=DATA_FILE):
     today = datetime.now().date()
-    entries = load_entries(filename)
-
     today_entries = []
-    for entry in entries:
+    for entry in load_entries(filename):
         try:
             if parse_timestamp(entry.timestamp).date() == today:
                 today_entries.append(entry)
         except ValueError:
             continue
-
     return today_entries
 
 
@@ -277,242 +247,446 @@ def duplicate_entry(index, filename=DATA_FILE):
     return duplicated_entry
 
 
-# =========================
-# GUI App
-# =========================
 class MoodTrackerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Mood Tracker")
-        self.root.geometry("1040x650")
-        self.root.minsize(860, 560)
-        self.root.configure(bg="#0f172a")
+        self.root.geometry("1120x760")
+        self.root.minsize(920, 640)
+
+        self.colors = {
+            "bg": "#f3fbf8",
+            "primary": "#18c7a1",
+            "primary_dark": "#0f8f78",
+            "primary_soft": "#dff8f2",
+            "surface": "#ffffff",
+            "surface_alt": "#eef8f5",
+            "text": "#17364d",
+            "muted": "#6d8192",
+            "line": "#d7ebe5",
+            "track": "#dde9e6",
+        }
+
+        self.root.configure(bg=self.colors["bg"])
 
         self.entries = []
         self.displayed_entries = []
+        self.selected_entry = None
+        self.active_view = "home"
+        self.filters_visible = False
+
         self.mood_var = tk.StringVar()
         self.search_var = tk.StringVar()
         self.min_mood_var = tk.StringVar()
         self.max_mood_var = tk.StringVar()
         self.start_date_var = tk.StringVar()
         self.end_date_var = tk.StringVar()
-        self.filters_visible = False
-        self.style = ttk.Style(self.root)
 
-        self.build_ui()
+        self.build_layout()
         self.refresh_entries()
 
-    def configure_styles(self):
-        try:
-            self.style.theme_use("clam")
-        except tk.TclError:
-            pass
+    def build_layout(self):
+        self.build_header()
+        self.build_filter_panel()
 
-        self.style.configure("Page.TFrame", background="#0f172a")
-        self.style.configure("Input.TFrame", background="#fef08a", borderwidth=2, relief="groove")
-        self.style.configure("Panel.TFrame", background="#1e293b", borderwidth=2, relief="groove")
-        self.style.configure("List.TFrame", background="#1e293b")
-        self.style.configure("Filter.TFrame", background="#dbeafe", borderwidth=2, relief="groove")
+        self.content_frame = tk.Frame(self.root, bg=self.colors["bg"])
+        self.content_frame.pack(fill="both", expand=True, padx=18, pady=18)
 
-        self.style.configure("InputTitle.TLabel", background="#fef08a", foreground="#111827", font=("Arial", 14, "bold"))
-        self.style.configure("Input.TLabel", background="#fef08a", foreground="#111827", font=("Arial", 12, "bold"))
-        self.style.configure("PanelTitle.TLabel", background="#1e293b", foreground="#f8fafc", font=("Arial", 12, "bold"))
-        self.style.configure("FilterTitle.TLabel", background="#dbeafe", foreground="#111827", font=("Arial", 12, "bold"))
-        self.style.configure("Filter.TLabel", background="#dbeafe", foreground="#111827", font=("Arial", 10, "bold"))
+        self.home_view = tk.Frame(self.content_frame, bg=self.colors["bg"])
+        self.add_view = tk.Frame(self.content_frame, bg=self.colors["bg"])
+        self.stats_view = tk.Frame(self.content_frame, bg=self.colors["bg"])
+        self.settings_view = tk.Frame(self.content_frame, bg=self.colors["bg"])
 
-        self.style.configure("Mood.TEntry", fieldbackground="#ffffff", foreground="#111827", insertcolor="#111827")
-        self.style.map("Mood.TEntry", fieldbackground=[("disabled", "#e5e7eb"), ("readonly", "#ffffff")])
+        self.build_home_view()
+        self.build_add_view()
+        self.build_stats_view()
+        self.build_settings_view()
+        self.build_bottom_nav()
+        self.show_view("home")
 
-        self.style.configure(
-            "Action.TButton",
-            background="#22c55e",
-            foreground="#052e16",
-            font=("Arial", 10, "bold"),
-            borderwidth=1,
-            focusthickness=2,
-            focuscolor="#bbf7d0",
+    def build_header(self):
+        self.header_frame = tk.Frame(self.root, bg=self.colors["primary"], height=96)
+        self.header_frame.pack(fill="x")
+        self.header_frame.pack_propagate(False)
+
+        text_block = tk.Frame(self.header_frame, bg=self.colors["primary"])
+        text_block.pack(side="left", fill="both", expand=True, padx=24, pady=16)
+
+        self.header_title = tk.Label(
+            text_block,
+            text="Mood Tracker",
+            bg=self.colors["primary"],
+            fg="white",
+            font=("Arial", 24, "bold"),
         )
-        self.style.map(
-            "Action.TButton",
-            background=[("active", "#16a34a"), ("pressed", "#15803d")],
-            foreground=[("active", "#052e16"), ("pressed", "#052e16")],
-        )
+        self.header_title.pack(anchor="w")
 
-    def build_ui(self):
-        self.configure_styles()
-
-        dark_text = "#111827"
-
-        input_frame = ttk.Frame(self.root, style="Input.TFrame", padding=(14, 12))
-        input_frame.pack(fill="x", padx=15, pady=(15, 8))
-
-        ttk.Label(input_frame, text="Type your mood here", style="InputTitle.TLabel").grid(
-            row=0, column=0, columnspan=4, padx=(0, 8), pady=(0, 10), sticky="w"
-        )
-
-        ttk.Label(input_frame, text="Mood number (1-5):", style="Input.TLabel").grid(
-            row=1, column=0, padx=(0, 8), pady=5, sticky="w"
-        )
-
-        self.mood_entry = ttk.Entry(
-            input_frame,
-            width=10,
-            font=("Arial", 12),
-            textvariable=self.mood_var,
-            style="Mood.TEntry",
-        )
-        self.mood_entry.grid(row=1, column=1, padx=(0, 18), pady=5, sticky="w")
-
-        ttk.Label(input_frame, text="Notes:", style="Input.TLabel").grid(
-            row=1, column=2, padx=(0, 8), pady=5, sticky="nw"
-        )
-
-        self.note_entry = tk.Text(
-            input_frame,
-            width=50,
-            height=5,
-            font=("Arial", 12),
-            wrap="word",
-            bg="#ffffff",
-            fg="#111827",
-            insertbackground="#111827",
-            relief="solid",
-            borderwidth=1,
-        )
-        self.note_entry.grid(row=1, column=3, padx=(0, 0), pady=5, sticky="we")
-        input_frame.grid_columnconfigure(3, weight=1)
-
-        button_frame = ttk.Frame(self.root, style="Page.TFrame")
-        button_frame.pack(fill="x", padx=15, pady=(2, 10))
-
-        ttk.Button(button_frame, text="Add Entry", width=14, command=self.gui_add_entry, style="Action.TButton").grid(row=0, column=0, padx=5, pady=4)
-        ttk.Button(button_frame, text="Update Selected", width=14, command=self.gui_update_entry, style="Action.TButton").grid(row=0, column=1, padx=5, pady=4)
-        ttk.Button(button_frame, text="Delete Selected", width=14, command=self.gui_delete_entry, style="Action.TButton").grid(row=0, column=2, padx=5, pady=4)
-        ttk.Button(button_frame, text="Edit Note", width=14, command=self.gui_edit_note_only, style="Action.TButton").grid(row=0, column=3, padx=5, pady=4)
-        ttk.Button(button_frame, text="Duplicate", width=14, command=self.gui_duplicate_entry, style="Action.TButton").grid(row=1, column=0, padx=5, pady=4)
-        ttk.Button(button_frame, text="Clear Inputs", width=14, command=self.clear_inputs, style="Action.TButton").grid(row=1, column=1, padx=5, pady=4)
-        ttk.Button(button_frame, text="Show Statistics", width=14, command=self.gui_show_stats, style="Action.TButton").grid(row=1, column=2, padx=5, pady=4)
-        ttk.Button(button_frame, text="Show Today", width=14, command=self.gui_show_today_entries, style="Action.TButton").grid(row=1, column=3, padx=5, pady=4)
-        ttk.Button(button_frame, text="Filter Entries", width=14, command=self.toggle_filter_panel, style="Action.TButton").grid(row=2, column=0, padx=5, pady=4)
-        ttk.Button(button_frame, text="Export CSV", width=14, command=self.gui_export_csv, style="Action.TButton").grid(row=2, column=1, padx=5, pady=4)
-        ttk.Button(button_frame, text="Refresh Entries", width=14, command=self.refresh_entries, style="Action.TButton").grid(row=2, column=2, padx=5, pady=4)
-        ttk.Button(button_frame, text="Delete All", width=14, command=self.gui_delete_all_entries, style="Action.TButton").grid(row=3, column=0, padx=5, pady=8)
-
-        self.filter_frame = ttk.Frame(self.root, style="Filter.TFrame", padding=(12, 10))
-
-        ttk.Label(self.filter_frame, text="Search and filters", style="FilterTitle.TLabel").grid(
-            row=0, column=0, columnspan=8, sticky="w", pady=(0, 8)
-        )
-        ttk.Label(self.filter_frame, text="Search:", style="Filter.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=4)
-        ttk.Entry(self.filter_frame, width=20, textvariable=self.search_var, style="Mood.TEntry").grid(row=1, column=1, sticky="w", padx=(0, 18), pady=4)
-        ttk.Label(self.filter_frame, text="Min mood:", style="Filter.TLabel").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=4)
-        ttk.Entry(self.filter_frame, width=8, textvariable=self.min_mood_var, style="Mood.TEntry").grid(row=1, column=3, sticky="w", padx=(0, 18), pady=4)
-        ttk.Label(self.filter_frame, text="Max mood:", style="Filter.TLabel").grid(row=1, column=4, sticky="w", padx=(0, 6), pady=4)
-        ttk.Entry(self.filter_frame, width=8, textvariable=self.max_mood_var, style="Mood.TEntry").grid(row=1, column=5, sticky="w", padx=(0, 18), pady=4)
-        ttk.Label(self.filter_frame, text="Start date:", style="Filter.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 6), pady=4)
-        ttk.Entry(self.filter_frame, width=20, textvariable=self.start_date_var, style="Mood.TEntry").grid(row=2, column=1, sticky="w", padx=(0, 18), pady=4)
-        ttk.Label(self.filter_frame, text="End date:", style="Filter.TLabel").grid(row=2, column=2, sticky="w", padx=(0, 6), pady=4)
-        ttk.Entry(self.filter_frame, width=20, textvariable=self.end_date_var, style="Mood.TEntry").grid(row=2, column=3, sticky="w", padx=(0, 18), pady=4)
-        ttk.Label(self.filter_frame, text="Use YYYY-MM-DD for dates.", style="Filter.TLabel").grid(
-            row=2, column=4, columnspan=3, sticky="w", pady=4
-        )
-        ttk.Button(self.filter_frame, text="Search Notes", width=14, command=self.gui_search_entries, style="Action.TButton").grid(row=3, column=0, padx=5, pady=(8, 4), sticky="w")
-        ttk.Button(self.filter_frame, text="Apply Filters", width=14, command=self.gui_apply_filters, style="Action.TButton").grid(row=3, column=1, padx=5, pady=(8, 4), sticky="w")
-        ttk.Button(self.filter_frame, text="Close Filters", width=14, command=self.toggle_filter_panel, style="Action.TButton").grid(row=3, column=2, padx=5, pady=(8, 4), sticky="w")
-
-        self.mood_entry.focus_set()
-
-        main_frame = ttk.Frame(self.root, style="Page.TFrame")
-        main_frame.pack(fill="both", expand=True, padx=15, pady=10)
-
-        left_frame = ttk.Frame(main_frame, style="Panel.TFrame")
-        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
-
-        ttk.Label(left_frame, text="Saved Entries", style="PanelTitle.TLabel").pack(anchor="w", padx=10, pady=10)
-
-        list_frame = ttk.Frame(left_frame, style="List.TFrame")
-        list_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-
-        self.listbox = tk.Listbox(
-            list_frame,
+        self.header_subtitle = tk.Label(
+            text_block,
+            text="Track your day with calm, clear snapshots.",
+            bg=self.colors["primary"],
+            fg="#dffcf6",
             font=("Arial", 11),
-            bg="#e0f2fe",
-            fg=dark_text,
-            selectbackground="#f97316",
-            selectforeground="#111827",
-            highlightbackground="#38bdf8",
-            highlightcolor="#38bdf8",
-            highlightthickness=2,
         )
-        self.listbox.pack(side="left", fill="both", expand=True)
+        self.header_subtitle.pack(anchor="w", pady=(4, 0))
 
-        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.listbox.yview)
-        scrollbar.pack(side="right", fill="y")
-        self.listbox.config(yscrollcommand=scrollbar.set)
-        self.listbox.bind("<<ListboxSelect>>", self.on_select_entry)
+        self.hero_badge = tk.Label(
+            self.header_frame,
+            text="0 Entries",
+            bg="#ecfffb",
+            fg=self.colors["primary_dark"],
+            font=("Arial", 11, "bold"),
+            padx=18,
+            pady=10,
+        )
+        self.hero_badge.pack(side="right", padx=24, pady=24)
 
-        right_frame = ttk.Frame(main_frame, style="Panel.TFrame")
-        right_frame.pack(side="left", fill="both", expand=True)
+    def build_filter_panel(self):
+        self.filter_frame = tk.Frame(
+            self.root,
+            bg=self.colors["surface"],
+            highlightbackground=self.colors["line"],
+            highlightthickness=1,
+        )
 
-        ttk.Label(right_frame, text="Entry Details", style="PanelTitle.TLabel").pack(anchor="w", padx=10, pady=10)
+        wrapper = tk.Frame(self.filter_frame, bg=self.colors["surface"])
+        wrapper.pack(fill="x", padx=20, pady=18)
 
-        self.details_text = tk.Text(
-            right_frame,
+        tk.Label(
+            wrapper,
+            text="Search and Filters",
+            bg=self.colors["surface"],
+            fg=self.colors["text"],
+            font=("Arial", 14, "bold"),
+        ).grid(row=0, column=0, columnspan=6, sticky="w")
+
+        fields = [
+            ("Search", self.search_var),
+            ("Min mood", self.min_mood_var),
+            ("Max mood", self.max_mood_var),
+            ("Start date", self.start_date_var),
+            ("End date", self.end_date_var),
+        ]
+        for index, (label_text, variable) in enumerate(fields):
+            row = 1 + (index // 3) * 2
+            column = (index % 3) * 2
+            tk.Label(
+                wrapper,
+                text=label_text,
+                bg=self.colors["surface"],
+                fg=self.colors["muted"],
+                font=("Arial", 10, "bold"),
+            ).grid(row=row, column=column, sticky="w", pady=(12, 4), padx=(0, 10))
+            tk.Entry(
+                wrapper,
+                textvariable=variable,
+                relief="flat",
+                bg=self.colors["surface_alt"],
+                fg=self.colors["text"],
+                insertbackground=self.colors["text"],
+                font=("Arial", 11),
+                width=22,
+            ).grid(row=row + 1, column=column, sticky="we", padx=(0, 18))
+
+        tk.Label(
+            wrapper,
+            text="Use YYYY-MM-DD for dates.",
+            bg=self.colors["surface"],
+            fg=self.colors["muted"],
+            font=("Arial", 10),
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 0))
+
+        button_row = tk.Frame(wrapper, bg=self.colors["surface"])
+        button_row.grid(row=6, column=0, columnspan=6, sticky="w", pady=(14, 0))
+        self.create_button(button_row, "Search Notes", self.gui_search_entries, secondary=True).pack(side="left", padx=(0, 10))
+        self.create_button(button_row, "Apply Filters", self.gui_apply_filters, secondary=True).pack(side="left", padx=(0, 10))
+        self.create_button(button_row, "Close Filters", self.toggle_filter_panel, secondary=True).pack(side="left")
+
+    def build_home_view(self):
+        self.home_view.columnconfigure(0, weight=3)
+        self.home_view.columnconfigure(1, weight=2)
+
+        left_column = tk.Frame(self.home_view, bg=self.colors["bg"])
+        left_column.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
+        self.summary_row = tk.Frame(left_column, bg=self.colors["bg"])
+        self.summary_row.pack(fill="x", pady=(0, 14))
+
+        self.entries_card = self.create_card(left_column, "Recent Entries", "A softer card view of your mood history.")
+        self.entries_card.pack(fill="both", expand=True)
+
+        self.entries_canvas = tk.Canvas(self.entries_card, bg=self.colors["surface"], highlightthickness=0, bd=0)
+        self.entries_scrollbar = tk.Scrollbar(self.entries_card, orient="vertical", command=self.entries_canvas.yview)
+        self.entries_canvas.configure(yscrollcommand=self.entries_scrollbar.set)
+        self.entries_scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=(0, 12))
+        self.entries_canvas.pack(fill="both", expand=True, padx=10, pady=(0, 12))
+
+        self.entries_list_frame = tk.Frame(self.entries_canvas, bg=self.colors["surface"])
+        self.entries_canvas_window = self.entries_canvas.create_window((0, 0), window=self.entries_list_frame, anchor="nw")
+        self.entries_list_frame.bind("<Configure>", self.on_entries_frame_configure)
+        self.entries_canvas.bind("<Configure>", self.on_entries_canvas_configure)
+
+        right_column = tk.Frame(self.home_view, bg=self.colors["bg"])
+        right_column.grid(row=0, column=1, sticky="nsew")
+
+        self.detail_card = self.create_card(right_column, "Entry Details", "Select a card to load the full entry.")
+        self.detail_card.pack(fill="both", expand=True, pady=(0, 14))
+
+        self.detail_mood_label = tk.Label(
+            self.detail_card,
+            text="Mood --",
+            bg=self.colors["surface"],
+            fg=self.colors["text"],
+            font=("Arial", 18, "bold"),
+        )
+        self.detail_mood_label.pack(anchor="w", padx=14)
+
+        self.detail_time_label = tk.Label(
+            self.detail_card,
+            text="Select an entry to populate this panel.",
+            bg=self.colors["surface"],
+            fg=self.colors["muted"],
+            font=("Arial", 10),
+        )
+        self.detail_time_label.pack(anchor="w", padx=14, pady=(4, 10))
+
+        self.detail_note_text = tk.Text(
+            self.detail_card,
+            height=8,
             wrap="word",
+            relief="flat",
+            bg=self.colors["surface_alt"],
+            fg=self.colors["text"],
             font=("Arial", 11),
+            padx=10,
+            pady=10,
             state="disabled",
-            bg="#ecfccb",
-            fg=dark_text,
-            highlightbackground="#84cc16",
-            highlightcolor="#84cc16",
-            highlightthickness=2,
         )
-        self.details_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.detail_note_text.pack(fill="x", padx=14, pady=(0, 12))
 
-    def populate_listbox(self, entries):
-        self.displayed_entries = entries
-        self.listbox.delete(0, tk.END)
+        self.progress_card = self.create_card(right_column, "Wellness Snapshot", "A simple visual summary tied to the mood level.")
+        self.progress_card.pack(fill="x")
+        self.progress_rows = []
+        for label in ["Calm", "Energy", "Focus"]:
+            row = self.create_progress_row(self.progress_card, label)
+            row.pack(fill="x", padx=14, pady=8)
+            self.progress_rows.append(row)
 
-        for entry in entries:
-            try:
-                index = self.entries.index(entry)
-            except ValueError:
-                index = -1
+    def build_add_view(self):
+        self.add_view.columnconfigure(0, weight=3)
+        self.add_view.columnconfigure(1, weight=2)
 
-            short_note = entry.note if entry.note else "No note"
-            if len(short_note) > 25:
-                short_note = short_note[:25] + "..."
+        form_column = tk.Frame(self.add_view, bg=self.colors["bg"])
+        form_column.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
 
-            self.listbox.insert(
-                tk.END,
-                f"{index} | Mood {entry.mood} | {format_timestamp(entry.timestamp)} | {short_note}",
+        form_card = self.create_card(form_column, "Add or Update Entry", "Keep one strong primary action and nearby secondary controls.")
+        form_card.pack(fill="both", expand=True)
+
+        form_inner = tk.Frame(form_card, bg=self.colors["surface"])
+        form_inner.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+        form_inner.columnconfigure(1, weight=1)
+
+        tk.Label(form_inner, text="Mood number (1-5)", bg=self.colors["surface"], fg=self.colors["muted"], font=("Arial", 10, "bold")).grid(
+            row=0, column=0, sticky="w", pady=(0, 6)
+        )
+        self.mood_entry = tk.Entry(
+            form_inner,
+            textvariable=self.mood_var,
+            relief="flat",
+            bg=self.colors["surface_alt"],
+            fg=self.colors["text"],
+            insertbackground=self.colors["text"],
+            font=("Arial", 14),
+            width=10,
+        )
+        self.mood_entry.grid(row=1, column=0, sticky="w", pady=(0, 16))
+
+        tk.Label(form_inner, text="Notes", bg=self.colors["surface"], fg=self.colors["muted"], font=("Arial", 10, "bold")).grid(
+            row=2, column=0, sticky="w", pady=(0, 6)
+        )
+        self.note_entry = tk.Text(
+            form_inner,
+            height=8,
+            wrap="word",
+            relief="flat",
+            bg=self.colors["surface_alt"],
+            fg=self.colors["text"],
+            insertbackground=self.colors["text"],
+            font=("Arial", 12),
+            padx=10,
+            pady=10,
+        )
+        self.note_entry.grid(row=3, column=0, columnspan=2, sticky="nsew")
+        form_inner.rowconfigure(3, weight=1)
+
+        primary_row = tk.Frame(form_inner, bg=self.colors["surface"])
+        primary_row.grid(row=4, column=0, columnspan=2, sticky="w", pady=(16, 0))
+        self.create_button(primary_row, "Add Entry", self.gui_add_entry).pack(side="left", padx=(0, 10))
+        self.create_button(primary_row, "Update Selected", self.gui_update_entry, secondary=True).pack(side="left", padx=(0, 10))
+        self.create_button(primary_row, "Clear Inputs", self.clear_inputs, secondary=True).pack(side="left")
+
+        secondary_column = tk.Frame(self.add_view, bg=self.colors["bg"])
+        secondary_column.grid(row=0, column=1, sticky="nsew")
+
+        actions_card = self.create_card(secondary_column, "Quick Actions", "Secondary tools grouped away from the form.")
+        actions_card.pack(fill="x", pady=(0, 14))
+
+        actions_grid = tk.Frame(actions_card, bg=self.colors["surface"])
+        actions_grid.pack(fill="x", padx=14, pady=(0, 14))
+        action_specs = [
+            ("Edit Note", self.gui_edit_note_only),
+            ("Delete Selected", self.gui_delete_entry),
+            ("Duplicate", self.gui_duplicate_entry),
+            ("Show Today", self.gui_show_today_entries),
+            ("Export CSV", self.gui_export_csv),
+            ("Delete All", self.gui_delete_all_entries),
+        ]
+        for index, (label, command) in enumerate(action_specs):
+            button = self.create_button(actions_grid, label, command, secondary=(label != "Delete All"))
+            if label == "Delete All":
+                button.configure(bg="#ffe8e7", fg="#9c403d", activebackground="#ffd3d0")
+            button.grid(row=index // 2, column=index % 2, padx=6, pady=6, sticky="we")
+        actions_grid.columnconfigure(0, weight=1)
+        actions_grid.columnconfigure(1, weight=1)
+
+        hint_card = self.create_card(secondary_column, "Entry Flow", "Select a card on Home, then return here to edit it.")
+        hint_card.pack(fill="both", expand=True)
+        self.hint_message = tk.Label(
+            hint_card,
+            text="Use the bottom navigation to switch between Home, Add, Stats, Filters, and Settings.",
+            bg=self.colors["surface"],
+            fg=self.colors["muted"],
+            justify="left",
+            wraplength=260,
+            font=("Arial", 11),
+        )
+        self.hint_message.pack(anchor="w", padx=14, pady=(0, 14))
+
+    def build_stats_view(self):
+        wrapper = tk.Frame(self.stats_view, bg=self.colors["bg"])
+        wrapper.pack(fill="both", expand=True)
+
+        self.stats_summary_card = self.create_card(wrapper, "Mood Overview", "A quick read on your recent mood patterns.")
+        self.stats_summary_card.pack(fill="x", pady=(0, 14))
+
+        self.stats_text_label = tk.Label(
+            self.stats_summary_card,
+            text="No entries available yet.",
+            bg=self.colors["surface"],
+            fg=self.colors["text"],
+            justify="left",
+            font=("Arial", 12),
+        )
+        self.stats_text_label.pack(anchor="w", padx=14, pady=(0, 14))
+
+        self.stats_detail_card = self.create_card(wrapper, "Highlights", "Status-style cards for the main summary metrics.")
+        self.stats_detail_card.pack(fill="both", expand=True)
+        self.stats_highlights_frame = tk.Frame(self.stats_detail_card, bg=self.colors["surface"])
+        self.stats_highlights_frame.pack(fill="both", expand=True, padx=14, pady=(0, 14))
+
+    def build_settings_view(self):
+        settings_card = self.create_card(self.settings_view, "Tools and Settings", "Support actions and project notes.")
+        settings_card.pack(fill="x")
+
+        actions = tk.Frame(settings_card, bg=self.colors["surface"])
+        actions.pack(fill="x", padx=14, pady=(0, 14))
+        self.create_button(actions, "Refresh Entries", self.refresh_entries, secondary=True).pack(side="left", padx=(0, 10))
+        self.create_button(actions, "Filter Entries", self.toggle_filter_panel, secondary=True).pack(side="left", padx=(0, 10))
+        self.create_button(actions, "Show Statistics", self.gui_show_stats).pack(side="left")
+
+        tk.Label(
+            settings_card,
+            text="This Tkinter version adapts the mobile-inspired style into a desktop app with a mint palette, rounded cards, clearer hierarchy, and a bottom navigation bar.",
+            bg=self.colors["surface"],
+            fg=self.colors["muted"],
+            justify="left",
+            wraplength=840,
+            font=("Arial", 11),
+        ).pack(anchor="w", padx=14, pady=(0, 14))
+
+    def build_bottom_nav(self):
+        self.bottom_nav = tk.Frame(
+            self.root,
+            bg=self.colors["surface"],
+            height=78,
+            highlightbackground=self.colors["line"],
+            highlightthickness=1,
+        )
+        self.bottom_nav.pack(fill="x", side="bottom")
+        self.bottom_nav.pack_propagate(False)
+
+        self.nav_buttons = {}
+        nav_items = [
+            ("Home", "home"),
+            ("Add", "add"),
+            ("Stats", "stats"),
+            ("Filters", "filters"),
+            ("Settings", "settings"),
+        ]
+        for label, view_name in nav_items:
+            button = tk.Button(
+                self.bottom_nav,
+                text=label,
+                bd=0,
+                relief="flat",
+                font=("Arial", 11, "bold"),
+                bg=self.colors["surface"],
+                fg=self.colors["muted"],
+                activebackground=self.colors["surface_alt"],
+                activeforeground=self.colors["text"],
+                command=lambda name=view_name: self.on_nav_click(name),
             )
+            button.pack(side="left", fill="both", expand=True, padx=4, pady=10)
+            self.nav_buttons[view_name] = button
 
-        self.clear_details()
+    def create_card(self, parent, title, subtitle):
+        card = tk.Frame(parent, bg=self.colors["surface"], highlightbackground=self.colors["line"], highlightthickness=1)
+        tk.Label(card, text=title, bg=self.colors["surface"], fg=self.colors["text"], font=("Arial", 15, "bold")).pack(anchor="w", padx=14, pady=(14, 4))
+        tk.Label(card, text=subtitle, bg=self.colors["surface"], fg=self.colors["muted"], font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 14))
+        return card
 
-    def refresh_entries(self):
-        self.entries = list_entries()
-        self.populate_listbox(self.entries)
+    def create_button(self, parent, text, command, secondary=False):
+        bg = self.colors["surface"] if secondary else self.colors["primary"]
+        fg = self.colors["primary_dark"] if secondary else "white"
+        active_bg = self.colors["surface_alt"] if secondary else self.colors["primary_dark"]
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bd=0,
+            relief="flat",
+            bg=bg,
+            fg=fg,
+            activebackground=active_bg,
+            activeforeground=fg,
+            font=("Arial", 11, "bold"),
+            padx=16,
+            pady=10,
+            highlightthickness=1 if secondary else 0,
+            highlightbackground=self.colors["line"],
+        )
 
-    def toggle_filter_panel(self):
-        if self.filters_visible:
-            self.filter_frame.pack_forget()
-            self.filters_visible = False
-            return
+    def create_progress_row(self, parent, label_text):
+        row = tk.Frame(parent, bg=self.colors["surface"])
+        header = tk.Frame(row, bg=self.colors["surface"])
+        header.pack(fill="x")
+        tk.Label(header, text=label_text, bg=self.colors["surface"], fg=self.colors["text"], font=("Arial", 11, "bold")).pack(side="left")
+        value_label = tk.Label(header, text="0%", bg=self.colors["surface"], fg=self.colors["muted"], font=("Arial", 11, "bold"))
+        value_label.pack(side="right")
 
-        self.filter_frame.pack(fill="x", padx=15, pady=(0, 10), before=self.root.pack_slaves()[-1])
-        self.filters_visible = True
+        track = tk.Frame(row, bg=self.colors["track"], height=8)
+        track.pack(fill="x", pady=(6, 0))
+        track.pack_propagate(False)
+        fill = tk.Frame(track, bg=self.colors["primary"])
+        fill.place(relheight=1, relwidth=0)
+        row.value_label = value_label
+        row.fill = fill
+        return row
 
-    def clear_details(self):
-        self.details_text.config(state="normal")
-        self.details_text.delete("1.0", tk.END)
-        self.details_text.insert(tk.END, "Select an entry to view details.")
-        self.details_text.config(state="disabled")
+    def on_entries_frame_configure(self, event=None):
+        self.entries_canvas.configure(scrollregion=self.entries_canvas.bbox("all"))
 
-    def clear_inputs(self):
-        self.mood_var.set("")
-        self.note_entry.delete("1.0", tk.END)
-        self.mood_entry.focus_set()
+    def on_entries_canvas_configure(self, event):
+        self.entries_canvas.itemconfigure(self.entries_canvas_window, width=event.width)
 
     def get_note_text(self):
         return self.note_entry.get("1.0", tk.END).strip()
@@ -521,50 +695,294 @@ class MoodTrackerApp:
         self.note_entry.delete("1.0", tk.END)
         self.note_entry.insert("1.0", note)
 
+    def clear_inputs(self):
+        self.mood_var.set("")
+        self.note_entry.delete("1.0", tk.END)
+        self.mood_entry.focus_set()
+
     def get_selected_entry_index(self):
-        selection = self.listbox.curselection()
-        if not selection:
+        if self.selected_entry is None:
             raise IndexError("Please select an entry first.")
+        return self.entries.index(self.selected_entry)
 
-        selected_entry = self.displayed_entries[selection[0]]
-        return self.entries.index(selected_entry)
+    def get_mood_color(self, mood):
+        palette = {
+            1: "#f7a5a2",
+            2: "#f7c59f",
+            3: "#ffd56a",
+            4: "#8fe0d0",
+            5: self.colors["primary"],
+        }
+        return palette.get(mood, self.colors["primary"])
 
-    def on_select_entry(self, event=None):
-        selection = self.listbox.curselection()
-        if not selection:
+    def get_entry_metrics(self, mood):
+        calm = min(100, 20 + mood * 16)
+        energy = min(100, 28 + mood * 14)
+        focus = min(100, 24 + mood * 15)
+        return [calm, energy, focus]
+
+    def update_header(self):
+        titles = {
+            "home": ("Mood Tracker", "Track your day with calm, clear snapshots."),
+            "add": ("Add Entry", "Use a clean form with one primary action."),
+            "stats": ("Mood Insights", "A friendlier overview of your patterns."),
+            "settings": ("Tools", "Supporting actions and project utilities."),
+        }
+        title, subtitle = titles.get(self.active_view, titles["home"])
+        self.header_title.config(text=title)
+        self.header_subtitle.config(text=subtitle)
+
+    def update_nav_state(self):
+        for view_name, button in self.nav_buttons.items():
+            active = view_name == self.active_view or (view_name == "filters" and self.filters_visible)
+            button.configure(
+                bg=self.colors["primary_soft"] if active else self.colors["surface"],
+                fg=self.colors["primary_dark"] if active else self.colors["muted"],
+            )
+
+    def show_view(self, view_name):
+        for frame in (self.home_view, self.add_view, self.stats_view, self.settings_view):
+            frame.pack_forget()
+
+        self.active_view = view_name
+        if view_name == "home":
+            self.home_view.pack(fill="both", expand=True)
+        elif view_name == "add":
+            self.add_view.pack(fill="both", expand=True)
+            self.mood_entry.focus_set()
+        elif view_name == "stats":
+            self.stats_view.pack(fill="both", expand=True)
+            self.render_stats_view()
+        elif view_name == "settings":
+            self.settings_view.pack(fill="both", expand=True)
+
+        self.update_header()
+        self.update_nav_state()
+
+    def on_nav_click(self, view_name):
+        if view_name == "filters":
+            self.toggle_filter_panel()
+            return
+        self.show_view(view_name)
+
+    def render_summary_cards(self):
+        for child in self.summary_row.winfo_children():
+            child.destroy()
+
+        stats = get_mood_stats()
+        common = get_most_common_mood()
+        summary_items = [
+            ("Entries", str(stats["count"]) if stats else "0"),
+            ("Average", f"{stats['average']:.1f}" if stats else "--"),
+            ("Today", str(len(get_entries_for_today()))),
+            ("Common", str(common["mood"]) if common else "--"),
+        ]
+
+        for label, value in summary_items:
+            card = tk.Frame(self.summary_row, bg=self.colors["surface"], highlightbackground=self.colors["line"], highlightthickness=1)
+            card.pack(side="left", fill="x", expand=True, padx=6)
+            tk.Label(card, text=value, bg=self.colors["surface"], fg=self.colors["text"], font=("Arial", 18, "bold")).pack(anchor="w", padx=14, pady=(12, 4))
+            tk.Label(card, text=label, bg=self.colors["surface"], fg=self.colors["muted"], font=("Arial", 10, "bold")).pack(anchor="w", padx=14, pady=(0, 12))
+
+    def create_entry_card(self, parent, entry, index):
+        card_bg = self.colors["primary_soft"] if self.selected_entry == entry else self.colors["surface_alt"]
+        border = self.colors["primary"] if self.selected_entry == entry else self.colors["line"]
+        card = tk.Frame(parent, bg=card_bg, highlightbackground=border, highlightthickness=1, cursor="hand2")
+        card.pack(fill="x", padx=6, pady=6)
+
+        header = tk.Frame(card, bg=card_bg)
+        header.pack(fill="x", padx=12, pady=(12, 4))
+        tk.Label(header, text=f"Mood {entry.mood}", bg=card_bg, fg=self.colors["text"], font=("Arial", 13, "bold")).pack(side="left")
+        tk.Label(header, text=format_timestamp(entry.timestamp), bg=card_bg, fg=self.colors["muted"], font=("Arial", 10)).pack(side="right")
+
+        preview = entry.note.strip() or "No note for this entry yet."
+        if len(preview) > 88:
+            preview = preview[:88] + "..."
+
+        tk.Label(
+            card,
+            text=preview,
+            bg=card_bg,
+            fg=self.colors["muted"],
+            wraplength=480,
+            justify="left",
+            font=("Arial", 11),
+        ).pack(anchor="w", padx=12, pady=(0, 10))
+
+        mood_bar = tk.Frame(card, bg=self.colors["track"], height=6)
+        mood_bar.pack(fill="x", padx=12, pady=(0, 12))
+        mood_bar.pack_propagate(False)
+        fill = tk.Frame(mood_bar, bg=self.get_mood_color(entry.mood))
+        fill.place(relheight=1, relwidth=entry.mood / 5)
+
+        widgets = [card, header]
+        widgets.extend(card.winfo_children())
+        widgets.extend(header.winfo_children())
+        for widget in widgets:
+            widget.bind("<Button-1>", lambda event, idx=index: self.select_entry(idx))
+
+    def render_entry_cards(self):
+        for child in self.entries_list_frame.winfo_children():
+            child.destroy()
+
+        if not self.displayed_entries:
+            tk.Label(
+                self.entries_list_frame,
+                text="No entries found. Add one from the Add tab or adjust your filters.",
+                bg=self.colors["surface"],
+                fg=self.colors["muted"],
+                font=("Arial", 11),
+                wraplength=520,
+                justify="left",
+            ).pack(anchor="w", padx=12, pady=12)
+            self.clear_details()
             return
 
-        entry = self.displayed_entries[selection[0]]
-        index = self.entries.index(entry)
+        for index, entry in enumerate(self.displayed_entries):
+            self.create_entry_card(self.entries_list_frame, entry, index)
 
-        details = (
-            f"Entry Number: {index}\n\n"
-            f"Mood: {entry.mood}\n"
-            f"Time: {format_timestamp(entry.timestamp)}\n"
-            f"Note: {entry.note or '—'}"
-        )
+    def clear_details(self):
+        self.detail_mood_label.config(text="Mood --")
+        self.detail_time_label.config(text="Select a card to populate this panel.")
+        self.detail_note_text.config(state="normal")
+        self.detail_note_text.delete("1.0", tk.END)
+        self.detail_note_text.insert("1.0", "Your notes will appear here once you select an entry.")
+        self.detail_note_text.config(state="disabled")
+        for row in self.progress_rows:
+            row.value_label.config(text="0%")
+            row.fill.place_configure(relwidth=0)
 
-        self.details_text.config(state="normal")
-        self.details_text.delete("1.0", tk.END)
-        self.details_text.insert(tk.END, details)
-        self.details_text.config(state="disabled")
+    def on_select_entry(self, event=None):
+        if self.selected_entry is None:
+            return
+
+        entry = self.selected_entry
+        self.detail_mood_label.config(text=f"Mood {entry.mood}")
+        self.detail_time_label.config(text=format_timestamp(entry.timestamp))
+        self.detail_note_text.config(state="normal")
+        self.detail_note_text.delete("1.0", tk.END)
+        self.detail_note_text.insert("1.0", entry.note or "No note for this entry.")
+        self.detail_note_text.config(state="disabled")
+
+        for row, value in zip(self.progress_rows, self.get_entry_metrics(entry.mood)):
+            row.value_label.config(text=f"{value}%")
+            row.fill.place_configure(relwidth=value / 100)
 
         self.mood_var.set(str(entry.mood))
         self.set_note_text(entry.note)
+
+    def select_entry(self, display_index):
+        if display_index < 0 or display_index >= len(self.displayed_entries):
+            return
+        self.selected_entry = self.displayed_entries[display_index]
+        self.on_select_entry()
+        self.render_entry_cards()
+
+    def populate_listbox(self, entries):
+        self.displayed_entries = entries
+        if self.selected_entry not in self.displayed_entries:
+            self.selected_entry = None
+        self.render_summary_cards()
+        self.render_entry_cards()
+        self.render_stats_view()
+
+    def refresh_entries(self):
+        self.entries = list_entries()
+        self.populate_listbox(self.entries)
+        self.hero_badge.config(text=f"{len(self.entries)} Entries")
+
+    def toggle_filter_panel(self):
+        if self.filters_visible:
+            self.filter_frame.pack_forget()
+            self.filters_visible = False
+        else:
+            self.filter_frame.pack(fill="x", padx=18, pady=(0, 8), after=self.header_frame)
+            self.filters_visible = True
+        self.update_nav_state()
+
+    def render_stats_view(self):
+        for child in self.stats_highlights_frame.winfo_children():
+            child.destroy()
+
+        stats = get_mood_stats()
+        trend = get_mood_trend()
+        common = get_most_common_mood()
+        if stats is None:
+            self.stats_text_label.config(text="No entries available yet.")
+            return
+
+        trend_label = trend["direction"].title() if trend else "Not enough data"
+        self.stats_text_label.config(
+            text=(
+                f"Average mood: {stats['average']:.2f}\n"
+                f"Highest mood: {stats['highest']}\n"
+                f"Lowest mood: {stats['lowest']}\n"
+                f"Trend: {trend_label}\n"
+                f"Most common mood: {common['mood']} ({common['frequency']} times)"
+            )
+        )
+
+        highlights = [
+            ("Total Entries", str(stats["count"])),
+            ("Today", str(len(get_entries_for_today()))),
+            ("Common Mood", str(common["mood"])),
+            ("Trend", trend_label),
+        ]
+
+        for index, (title, value) in enumerate(highlights):
+            card = tk.Frame(self.stats_highlights_frame, bg=self.colors["surface_alt"], highlightbackground=self.colors["line"], highlightthickness=1)
+            card.grid(row=index // 2, column=index % 2, sticky="nsew", padx=6, pady=6)
+            tk.Label(card, text=value, bg=self.colors["surface_alt"], fg=self.colors["text"], font=("Arial", 18, "bold")).pack(anchor="w", padx=14, pady=(14, 4))
+            tk.Label(card, text=title, bg=self.colors["surface_alt"], fg=self.colors["muted"], font=("Arial", 10, "bold")).pack(anchor="w", padx=14, pady=(0, 14))
+        self.stats_highlights_frame.columnconfigure(0, weight=1)
+        self.stats_highlights_frame.columnconfigure(1, weight=1)
+
+    def show_success_screen(self, title, body):
+        popup = tk.Toplevel(self.root)
+        popup.title(title)
+        popup.transient(self.root)
+        popup.grab_set()
+        popup.configure(bg=self.colors["primary"])
+        popup.geometry("420x340")
+        popup.resizable(False, False)
+
+        circle = tk.Canvas(popup, width=160, height=160, bg=self.colors["primary"], highlightthickness=0)
+        circle.pack(pady=(24, 12))
+        circle.create_oval(20, 20, 140, 140, fill="#4fe0bf", outline="")
+        circle.create_oval(46, 60, 114, 118, fill="#ffffff", outline=self.colors["text"], width=2)
+        circle.create_text(80, 89, text=":)", fill=self.colors["primary_dark"], font=("Arial", 20, "bold"))
+
+        tk.Label(popup, text=title, bg=self.colors["primary"], fg="white", font=("Arial", 22, "bold")).pack()
+        tk.Label(popup, text=body, bg=self.colors["primary"], fg="#ddfff7", font=("Arial", 11), wraplength=280, justify="center").pack(pady=(12, 24))
+        tk.Button(
+            popup,
+            text="OK",
+            command=popup.destroy,
+            bd=0,
+            relief="flat",
+            bg="white",
+            fg=self.colors["primary_dark"],
+            activebackground="#ecfffb",
+            activeforeground=self.colors["primary_dark"],
+            font=("Arial", 12, "bold"),
+            padx=40,
+            pady=10,
+        ).pack()
 
     def gui_add_entry(self):
         try:
             mood_text = self.mood_var.get().strip()
             note = self.get_note_text()
-
             if not mood_text:
                 raise ValueError("Please enter a mood from 1 to 5 before adding an entry.")
 
-            mood = int(mood_text)
-            add_entry(mood, note)
+            new_entry = add_entry(int(mood_text), note)
             self.refresh_entries()
+            self.selected_entry = new_entry
+            self.populate_listbox(self.entries)
             self.clear_inputs()
-            messagebox.showinfo("Success", "Mood entry added.", parent=self.root)
+            self.show_success_screen("Entry saved", "Your mood was added to the timeline.")
+            self.show_view("home")
         except Exception as error:
             messagebox.showerror("Error", str(error), parent=self.root)
 
@@ -572,20 +990,18 @@ class MoodTrackerApp:
         try:
             index = self.get_selected_entry_index()
             mood_text = self.mood_var.get().strip()
-            new_note = self.get_note_text()
-
             if not mood_text:
                 raise ValueError("Please enter a mood from 1 to 5 before updating an entry.")
-
-            new_mood = int(mood_text)
-
             confirm = messagebox.askyesno("Confirm Update", f"Update entry {index}?", parent=self.root)
             if not confirm:
                 return
 
-            update_entry(index, new_mood=new_mood, new_note=new_note)
+            update_entry(index, new_mood=int(mood_text), new_note=self.get_note_text())
             self.refresh_entries()
-            messagebox.showinfo("Success", "Mood entry updated.", parent=self.root)
+            self.selected_entry = self.entries[index]
+            self.on_select_entry()
+            self.render_entry_cards()
+            self.show_success_screen("Entry updated", "The selected mood entry now reflects your changes.")
         except Exception as error:
             messagebox.showerror("Error", str(error), parent=self.root)
 
@@ -597,28 +1013,33 @@ class MoodTrackerApp:
                 return
 
             delete_entry(index)
+            self.selected_entry = None
             self.refresh_entries()
             self.clear_inputs()
-            messagebox.showinfo("Success", "Mood entry deleted.", parent=self.root)
+            self.show_success_screen("Entry deleted", "The selected mood entry was removed.")
         except Exception as error:
             messagebox.showerror("Error", str(error), parent=self.root)
 
     def gui_edit_note_only(self):
         try:
             index = self.get_selected_entry_index()
-            new_note = self.get_note_text()
-            edit_note_only(index, new_note)
+            edit_note_only(index, self.get_note_text())
             self.refresh_entries()
-            messagebox.showinfo("Success", "Note updated.", parent=self.root)
+            self.selected_entry = self.entries[index]
+            self.on_select_entry()
+            self.render_entry_cards()
+            self.show_success_screen("Note updated", "Only the note was changed for this entry.")
         except Exception as error:
             messagebox.showerror("Error", str(error), parent=self.root)
 
     def gui_duplicate_entry(self):
         try:
             index = self.get_selected_entry_index()
-            duplicate_entry(index)
+            duplicated = duplicate_entry(index)
             self.refresh_entries()
-            messagebox.showinfo("Success", "Entry duplicated.", parent=self.root)
+            self.selected_entry = duplicated
+            self.populate_listbox(self.entries)
+            self.show_success_screen("Entry duplicated", "A new copy was created with the current timestamp.")
         except Exception as error:
             messagebox.showerror("Error", str(error), parent=self.root)
 
@@ -632,10 +1053,7 @@ class MoodTrackerApp:
         trend = get_mood_trend()
         trend_text = "Not enough entries."
         if trend is not None:
-            trend_text = (
-                f"{trend['direction'].title()} "
-                f"({trend['first_average']:.2f} -> {trend['second_average']:.2f})"
-            )
+            trend_text = f"{trend['direction'].title()} ({trend['first_average']:.2f} -> {trend['second_average']:.2f})"
 
         stats_text = (
             f"Total entries: {stats['count']}\n"
@@ -646,26 +1064,25 @@ class MoodTrackerApp:
             f"Trend: {trend_text}"
         )
         messagebox.showinfo("Mood Statistics", stats_text, parent=self.root)
+        self.show_view("stats")
 
     def gui_show_today_entries(self):
         today_entries = get_entries_for_today()
         self.populate_listbox(today_entries)
-
+        self.show_view("home")
         if not today_entries:
             messagebox.showinfo("Today's Entries", "No entries found for today.", parent=self.root)
 
     def gui_search_entries(self):
-        keyword = self.search_var.get().strip()
-        results = search_entries(keyword)
+        results = search_entries(self.search_var.get().strip())
         self.populate_listbox(results)
-
-        if keyword:
+        self.show_view("home")
+        if self.search_var.get().strip():
             messagebox.showinfo("Search Results", f"Found {len(results)} matching entries.", parent=self.root)
 
     def gui_apply_filters(self):
         try:
             filtered_entries = self.entries
-
             min_mood = int(self.min_mood_var.get()) if self.min_mood_var.get().strip() else None
             max_mood = int(self.max_mood_var.get()) if self.max_mood_var.get().strip() else None
             start_date = self.start_date_var.get().strip() or None
@@ -680,6 +1097,7 @@ class MoodTrackerApp:
                 filtered_entries = [entry for entry in filtered_entries if entry in date_matches]
 
             self.populate_listbox(filtered_entries)
+            self.show_view("home")
             messagebox.showinfo("Filters", f"Showing {len(filtered_entries)} filtered entries.", parent=self.root)
         except Exception as error:
             messagebox.showerror("Error", str(error), parent=self.root)
@@ -702,10 +1120,8 @@ class MoodTrackerApp:
                 'Type "delete all entries" to permanently delete all saved entries.',
                 parent=self.root,
             )
-
             if confirmation_text is None:
                 return
-
             if confirmation_text.strip() != "delete all entries":
                 messagebox.showerror(
                     "Confirmation Failed",
@@ -715,13 +1131,10 @@ class MoodTrackerApp:
                 return
 
             deleted_count = delete_all_entries()
+            self.selected_entry = None
             self.refresh_entries()
             self.clear_inputs()
-            messagebox.showinfo(
-                "Delete All",
-                f"Deleted {deleted_count} entries.",
-                parent=self.root,
-            )
+            self.show_success_screen("All entries deleted", f"Deleted {deleted_count} entries from your tracker.")
         except Exception as error:
             messagebox.showerror("Error", str(error), parent=self.root)
 
