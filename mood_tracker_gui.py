@@ -1,6 +1,9 @@
+import contextlib
 import csv
+import fcntl
 import json
 import os
+import tempfile
 import tkinter as tk
 from collections import Counter
 from dataclasses import asdict, dataclass, field
@@ -10,6 +13,36 @@ from tkinter import messagebox, simpledialog
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "mood_entries.json")
 EXPORT_FILE = os.path.join(BASE_DIR, "mood_entries_export.csv")
+_LOCK_FILE = os.path.join(BASE_DIR, ".mood_entries.lock")
+MAX_NOTE_LENGTH = 2000
+
+
+class DataLoadWarning(Exception):
+    """Some entries could not be loaded due to invalid data."""
+    def __init__(self, message, entries):
+        super().__init__(message)
+        self.entries = entries
+
+
+@contextlib.contextmanager
+def _data_lock(exclusive=False):
+    flag = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+    with open(_LOCK_FILE, "w") as fd:
+        fcntl.flock(fd, flag)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _load_entries_safe(filename=DATA_FILE):
+    """Load entries without raising; returns partial results on data warnings."""
+    try:
+        return load_entries(filename)
+    except DataLoadWarning as e:
+        return e.entries
+    except RuntimeError:
+        return []
 
 
 @dataclass
@@ -21,6 +54,14 @@ class MoodEntry:
     def __post_init__(self):
         if not isinstance(self.mood, int) or not 1 <= self.mood <= 5:
             raise ValueError("Mood must be an integer between 1 and 5.")
+        if not isinstance(self.note, str):
+            raise TypeError("Note must be a string.")
+        if not isinstance(self.timestamp, str):
+            raise TypeError("Timestamp must be a string.")
+        try:
+            datetime.fromisoformat(self.timestamp)
+        except ValueError:
+            raise ValueError(f"Invalid timestamp format: {self.timestamp!r}")
 
 
 def parse_timestamp(timestamp):
@@ -39,29 +80,57 @@ def load_entries(filename=DATA_FILE):
         return []
 
     try:
-        with open(filename, "r", encoding="utf-8") as file:
-            data = json.load(file)
-    except (json.JSONDecodeError, OSError, IOError):
-        return []
+        with _data_lock(exclusive=False):
+            with open(filename, "r", encoding="utf-8") as file:
+                data = json.load(file)
+    except json.JSONDecodeError:
+        raise RuntimeError(
+            "The data file is corrupted and could not be read. "
+            "Restore a backup or delete the file to start fresh."
+        )
+    except OSError as e:
+        raise RuntimeError(f"Could not read data file: {e}")
 
     if not isinstance(data, list):
-        return []
+        raise RuntimeError("The data file contains unexpected data. Expected a list of entries.")
 
     entries = []
+    skipped = 0
     for entry in data:
         try:
             entries.append(MoodEntry(**entry))
         except (ValueError, TypeError):
-            pass
+            skipped += 1
+
+    if skipped:
+        raise DataLoadWarning(
+            f"{skipped} corrupted entry/entries were skipped and could not be loaded.",
+            entries,
+        )
+
     return entries
 
 
 def save_entries(entries, filename=DATA_FILE):
-    with open(filename, "w", encoding="utf-8") as file:
-        json.dump([asdict(entry) for entry in entries], file, indent=4)
+    dir_name = os.path.dirname(filename) or "."
+    tmp_path = None
+    try:
+        with _data_lock(exclusive=True):
+            fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp", text=True)
+            with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+                json.dump([asdict(entry) for entry in entries], tmp_file, indent=4)
+            os.replace(tmp_path, filename)
+            tmp_path = None
+    except OSError as e:
+        if tmp_path:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+        raise OSError(f"Failed to save entries: {e}") from e
 
 
 def add_entry(mood, note="", filename=DATA_FILE):
+    if len(note) > MAX_NOTE_LENGTH:
+        raise ValueError(f"Note exceeds the {MAX_NOTE_LENGTH}-character limit.")
     entries = load_entries(filename)
     new_entry = MoodEntry(mood=mood, note=note)
     entries.append(new_entry)
@@ -96,8 +165,12 @@ def update_entry(index, new_mood=None, new_note=None, filename=DATA_FILE):
     if new_mood is not None:
         if not isinstance(new_mood, int) or not 1 <= new_mood <= 5:
             raise ValueError("Mood must be an integer between 1 and 5.")
-        entries[index].mood = new_mood
 
+    if new_note is not None and len(new_note) > MAX_NOTE_LENGTH:
+        raise ValueError(f"Note exceeds the {MAX_NOTE_LENGTH}-character limit.")
+
+    if new_mood is not None:
+        entries[index].mood = new_mood
     if new_note is not None:
         entries[index].note = new_note
 
@@ -106,7 +179,7 @@ def update_entry(index, new_mood=None, new_note=None, filename=DATA_FILE):
 
 
 def get_mood_stats(filename=DATA_FILE):
-    entries = load_entries(filename)
+    entries = _load_entries_safe(filename)
     if not entries:
         return None
 
@@ -148,8 +221,22 @@ def filter_by_mood(min_mood=None, max_mood=None, filename=DATA_FILE):
 
 def filter_by_date(start_date=None, end_date=None, filename=DATA_FILE):
     entries = load_entries(filename)
-    start = datetime.fromisoformat(start_date).date() if start_date else None
-    end = datetime.fromisoformat(end_date).date() if end_date else None
+
+    if start_date:
+        try:
+            start = datetime.fromisoformat(start_date).date()
+        except ValueError:
+            raise ValueError(f"Invalid start date '{start_date}'. Use YYYY-MM-DD format.")
+    else:
+        start = None
+
+    if end_date:
+        try:
+            end = datetime.fromisoformat(end_date).date()
+        except ValueError:
+            raise ValueError(f"Invalid end date '{end_date}'. Use YYYY-MM-DD format.")
+    else:
+        end = None
 
     if start and end and start > end:
         raise ValueError("Start date cannot be after end date.")
@@ -181,7 +268,7 @@ def export_entries_csv(filename=DATA_FILE, export_filename=EXPORT_FILE):
 
 
 def get_mood_trend(filename=DATA_FILE):
-    entries = load_entries(filename)
+    entries = _load_entries_safe(filename)
     if len(entries) < 2:
         return None
 
@@ -211,7 +298,7 @@ def get_mood_trend(filename=DATA_FILE):
 
 
 def get_most_common_mood(filename=DATA_FILE):
-    entries = load_entries(filename)
+    entries = _load_entries_safe(filename)
     if not entries:
         return None
 
@@ -222,7 +309,7 @@ def get_most_common_mood(filename=DATA_FILE):
 def get_entries_for_today(filename=DATA_FILE):
     today = datetime.now().date()
     today_entries = []
-    for entry in load_entries(filename):
+    for entry in _load_entries_safe(filename):
         try:
             if parse_timestamp(entry.timestamp).date() == today:
                 today_entries.append(entry)
@@ -887,7 +974,14 @@ class MoodTrackerApp:
         self.render_stats_view()
 
     def refresh_entries(self):
-        self.entries = list_entries()
+        try:
+            self.entries = list_entries()
+        except DataLoadWarning as warning:
+            self.entries = warning.entries
+            messagebox.showwarning("Data Warning", str(warning), parent=self.root)
+        except RuntimeError as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+            self.entries = []
         self.populate_listbox(self.entries)
         self.hero_badge.config(text=f"{len(self.entries)} Entries")
 
@@ -975,6 +1069,8 @@ class MoodTrackerApp:
             note = self.get_note_text()
             if not mood_text:
                 raise ValueError("Please enter a mood from 1 to 5 before adding an entry.")
+            if not mood_text.isdigit():
+                raise ValueError("Mood must be a whole number between 1 and 5.")
 
             new_entry = add_entry(int(mood_text), note)
             self.refresh_entries()
@@ -983,8 +1079,14 @@ class MoodTrackerApp:
             self.clear_inputs()
             self.show_success_screen("Entry saved", "Your mood was added to the timeline.")
             self.show_view("home")
-        except Exception as error:
+        except ValueError as error:
+            messagebox.showerror("Invalid Input", str(error), parent=self.root)
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
             messagebox.showerror("Error", str(error), parent=self.root)
+        except Exception as error:
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
     def gui_update_entry(self):
         try:
@@ -992,18 +1094,29 @@ class MoodTrackerApp:
             mood_text = self.mood_var.get().strip()
             if not mood_text:
                 raise ValueError("Please enter a mood from 1 to 5 before updating an entry.")
+            if not mood_text.isdigit():
+                raise ValueError("Mood must be a whole number between 1 and 5.")
             confirm = messagebox.askyesno("Confirm Update", f"Update entry {index}?", parent=self.root)
             if not confirm:
                 return
 
             update_entry(index, new_mood=int(mood_text), new_note=self.get_note_text())
             self.refresh_entries()
-            self.selected_entry = self.entries[index]
-            self.on_select_entry()
+            if 0 <= index < len(self.entries):
+                self.selected_entry = self.entries[index]
+                self.on_select_entry()
             self.render_entry_cards()
             self.show_success_screen("Entry updated", "The selected mood entry now reflects your changes.")
-        except Exception as error:
+        except ValueError as error:
+            messagebox.showerror("Invalid Input", str(error), parent=self.root)
+        except IndexError as error:
+            messagebox.showerror("Selection Error", str(error), parent=self.root)
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
             messagebox.showerror("Error", str(error), parent=self.root)
+        except Exception as error:
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
     def gui_delete_entry(self):
         try:
@@ -1012,25 +1125,47 @@ class MoodTrackerApp:
             if not confirm:
                 return
 
+            current_entries = load_entries()
+            if index >= len(current_entries) or asdict(current_entries[index]) != asdict(self.selected_entry):
+                raise RuntimeError(
+                    "The entry list changed since you selected this entry. "
+                    "Please refresh and try again."
+                )
+
             delete_entry(index)
             self.selected_entry = None
             self.refresh_entries()
             self.clear_inputs()
             self.show_success_screen("Entry deleted", "The selected mood entry was removed.")
-        except Exception as error:
+        except IndexError as error:
+            messagebox.showerror("Selection Error", str(error), parent=self.root)
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
             messagebox.showerror("Error", str(error), parent=self.root)
+        except Exception as error:
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
     def gui_edit_note_only(self):
         try:
             index = self.get_selected_entry_index()
             edit_note_only(index, self.get_note_text())
             self.refresh_entries()
-            self.selected_entry = self.entries[index]
-            self.on_select_entry()
+            if 0 <= index < len(self.entries):
+                self.selected_entry = self.entries[index]
+                self.on_select_entry()
             self.render_entry_cards()
             self.show_success_screen("Note updated", "Only the note was changed for this entry.")
-        except Exception as error:
+        except ValueError as error:
+            messagebox.showerror("Invalid Input", str(error), parent=self.root)
+        except IndexError as error:
+            messagebox.showerror("Selection Error", str(error), parent=self.root)
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
             messagebox.showerror("Error", str(error), parent=self.root)
+        except Exception as error:
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
     def gui_duplicate_entry(self):
         try:
@@ -1040,8 +1175,14 @@ class MoodTrackerApp:
             self.selected_entry = duplicated
             self.populate_listbox(self.entries)
             self.show_success_screen("Entry duplicated", "A new copy was created with the current timestamp.")
-        except Exception as error:
+        except IndexError as error:
+            messagebox.showerror("Selection Error", str(error), parent=self.root)
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
             messagebox.showerror("Error", str(error), parent=self.root)
+        except Exception as error:
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
     def gui_show_stats(self):
         stats = get_mood_stats()
@@ -1074,7 +1215,14 @@ class MoodTrackerApp:
             messagebox.showinfo("Today's Entries", "No entries found for today.", parent=self.root)
 
     def gui_search_entries(self):
-        results = search_entries(self.search_var.get().strip())
+        try:
+            results = search_entries(self.search_var.get().strip())
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+            return
+        except (RuntimeError, OSError) as error:
+            messagebox.showerror("Error", str(error), parent=self.root)
+            return
         self.populate_listbox(results)
         self.show_view("home")
         if self.search_var.get().strip():
@@ -1083,8 +1231,16 @@ class MoodTrackerApp:
     def gui_apply_filters(self):
         try:
             filtered_entries = self.entries
-            min_mood = int(self.min_mood_var.get()) if self.min_mood_var.get().strip() else None
-            max_mood = int(self.max_mood_var.get()) if self.max_mood_var.get().strip() else None
+            min_mood_raw = self.min_mood_var.get().strip()
+            max_mood_raw = self.max_mood_var.get().strip()
+
+            if min_mood_raw and not min_mood_raw.isdigit():
+                raise ValueError("Min mood must be a whole number between 1 and 5.")
+            if max_mood_raw and not max_mood_raw.isdigit():
+                raise ValueError("Max mood must be a whole number between 1 and 5.")
+
+            min_mood = int(min_mood_raw) if min_mood_raw else None
+            max_mood = int(max_mood_raw) if max_mood_raw else None
             start_date = self.start_date_var.get().strip() or None
             end_date = self.end_date_var.get().strip() or None
 
@@ -1099,15 +1255,25 @@ class MoodTrackerApp:
             self.populate_listbox(filtered_entries)
             self.show_view("home")
             messagebox.showinfo("Filters", f"Showing {len(filtered_entries)} filtered entries.", parent=self.root)
-        except Exception as error:
+        except ValueError as error:
+            messagebox.showerror("Invalid Input", str(error), parent=self.root)
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
             messagebox.showerror("Error", str(error), parent=self.root)
+        except Exception as error:
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
     def gui_export_csv(self):
         try:
             export_path = export_entries_csv()
             messagebox.showinfo("Export Complete", f"Entries exported to:\n{export_path}", parent=self.root)
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
+            messagebox.showerror("Export Error", str(error), parent=self.root)
         except Exception as error:
-            messagebox.showerror("Error", str(error), parent=self.root)
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
     def gui_delete_all_entries(self):
         try:
@@ -1135,8 +1301,12 @@ class MoodTrackerApp:
             self.refresh_entries()
             self.clear_inputs()
             self.show_success_screen("All entries deleted", f"Deleted {deleted_count} entries from your tracker.")
-        except Exception as error:
+        except DataLoadWarning as error:
+            messagebox.showerror("Data Error", str(error), parent=self.root)
+        except (RuntimeError, OSError) as error:
             messagebox.showerror("Error", str(error), parent=self.root)
+        except Exception as error:
+            messagebox.showerror("Unexpected Error", str(error), parent=self.root)
 
 
 if __name__ == "__main__":
